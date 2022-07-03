@@ -1,36 +1,29 @@
-/* 
-  Rui Santos
-  Complete project details at https://RandomNerdTutorials.com/esp32-web-server-websocket-sliders/
-  
-  Permission is hereby granted, free of charge, to any person obtaining a copy
-  of this software and associated documentation files.
-  
-  The above copyright notice and this permission notice shall be included in all
-  copies or substantial portions of the Software.
-*/
-
-#include <Arduino.h>
 #include <WiFi.h>
-#include <AsyncTCP.h>
-#include <ESPAsyncWebServer.h>
-#include "SPIFFS.h"
+#include <HTTPClient.h>
 #include <Arduino_JSON.h>
 
-// Replace with your network credentials
-const char* ssid = "SSID12345"; //sett to ssid 
-const char* password = "1234567890"; //set to password
 
-// Create AsyncWebServer object on port 80
-AsyncWebServer server(80);
-// Create a WebSocket object
+const char* ssid = "iPhone";
+const char* password = "tshetrim";
 
-AsyncWebSocket ws("/ws");
+//Your Domain name with URL path or IP address with path
+String serverName = "https://happy-fish.herokuapp.com/esp32/";
+
+// the following variables are unsigned longs because the time, measured in
+// milliseconds, will quickly become a bigger number than can be stored in an int.
+unsigned long lastTime = 0;
+// Timer set to 10 minutes (600000)
+//unsigned long timerDelay = 600000;
+// Set timer to 5 seconds (5000)
+unsigned long timerDelay = 5000;
+
 // Set LED GPIO
 const int ledPin1 = 25;
 const int ledPin2 = 26;
 const int ledPin3 = 27;
 
-String message = "";
+//variables
+String string = "";
 String sliderValue1 = "0";
 String sliderValue2 = "0";
 String sliderValue3 = "0";
@@ -47,136 +40,67 @@ const int ledChannel3 = 2;
 
 const int resolution = 8;
 
-//Json Variable to Hold Slider Values
-JSONVar sliderValues;
 
-//Get Slider Values
-String getSliderValues(){
-  sliderValues["sliderValue1"] = String(sliderValue1);
-  sliderValues["sliderValue2"] = String(sliderValue2);
-  sliderValues["sliderValue3"] = String(sliderValue3);
+//Json Variable to Hold Config Values
+JSONVar config;
 
-  String jsonString = JSON.stringify(sliderValues);
-  return jsonString;
-}
 
-// Initialize SPIFFS
-void initFS() {
-  if (!SPIFFS.begin()) {
-    Serial.println("An error has occurred while mounting SPIFFS");
-  }
-  else{
-   Serial.println("SPIFFS mounted successfully");
-  }
-}
+boolean getConfig(){
+    HTTPClient http;
 
-// Initialize WiFi
-void initWiFi() {
-  WiFi.mode(WIFI_STA);
-  WiFi.begin(ssid, password);
-  Serial.print("Connecting to WiFi ..");
-  while (WiFi.status() != WL_CONNECTED) {
-    Serial.print('.');
-    delay(1000);
-  }
-  Serial.println(WiFi.localIP());
-}
+    String serverPath = serverName + "config";
+    
+    // Your Domain name with URL path or IP address with path
+    http.begin(serverPath.c_str());
+    
+    // Send HTTP GET request
+    int httpResponseCode = http.GET();
+    
+    if (httpResponseCode>0) {
+      //prints the current HTTP response code 
+      Serial.print("HTTP Response code: ");
+      Serial.println(httpResponseCode);
 
-void notifyClients(String sliderValues) {
-  ws.textAll(sliderValues);
-}
-
-void handleWebSocketMessage(void *arg, uint8_t *data, size_t len) {
-  AwsFrameInfo *info = (AwsFrameInfo*)arg;
-  if (info->final && info->index == 0 && info->len == len && info->opcode == WS_TEXT) {
-    data[len] = 0;
-    message = (char*)data;
-    if (message.indexOf("1s") >= 0) {
-      sliderValue1 = message.substring(2);
-      dutyCycle1 = map(sliderValue1.toInt(), 0, 100, 0, 255);
-      Serial.println(dutyCycle1);
-      Serial.print(getSliderValues());
-      notifyClients(getSliderValues());
+      //payload contains the JSON as a string with config variables
+      String payload = http.getString();
+      config = JSON.parse(payload);
+      Serial.println(payload);
     }
-    if (message.indexOf("2s") >= 0) {
-      sliderValue2 = message.substring(2);
-      dutyCycle2 = map(sliderValue2.toInt(), 0, 100, 0, 255);
-      Serial.println(dutyCycle2);
-      Serial.print(getSliderValues());
-      notifyClients(getSliderValues());
-    }    
-    if (message.indexOf("3s") >= 0) {
-      sliderValue3 = message.substring(2);
-      dutyCycle3 = map(sliderValue3.toInt(), 0, 100, 0, 255);
-      Serial.println(dutyCycle3);
-      Serial.print(getSliderValues());
-      notifyClients(getSliderValues());
+    else {
+      Serial.print("Error code: ");
+      Serial.println(httpResponseCode);
     }
-    if (strcmp((char*)data, "getValues") == 0) {
-      notifyClients(getSliderValues());
-    }
-  }
+    // Free resources
+    http.end();
 }
-void onEvent(AsyncWebSocket *server, AsyncWebSocketClient *client, AwsEventType type, void *arg, uint8_t *data, size_t len) {
-  switch (type) {
-    case WS_EVT_CONNECT:
-      Serial.printf("WebSocket client #%u connected from %s\n", client->id(), client->remoteIP().toString().c_str());
-      break;
-    case WS_EVT_DISCONNECT:
-      Serial.printf("WebSocket client #%u disconnected\n", client->id());
-      break;
-    case WS_EVT_DATA:
-      handleWebSocketMessage(arg, data, len);
-      break;
-    case WS_EVT_PONG:
-    case WS_EVT_ERROR:
-      break;
-  }
-}
-
-void initWebSocket() {
-  ws.onEvent(onEvent);
-  server.addHandler(&ws);
-}
-
 
 void setup() {
-  Serial.begin(115200);
-  pinMode(ledPin1, OUTPUT);
-  pinMode(ledPin2, OUTPUT);
-  pinMode(ledPin3, OUTPUT);
-  initFS();
-  initWiFi();
+  Serial.begin(115200); 
 
-  // configure LED PWM functionalitites
-  ledcSetup(ledChannel1, freq, resolution);
-  ledcSetup(ledChannel2, freq, resolution);
-  ledcSetup(ledChannel3, freq, resolution);
-
-  // attach the channel to the GPIO to be controlled
-  ledcAttachPin(ledPin1, ledChannel1);
-  ledcAttachPin(ledPin2, ledChannel2);
-  ledcAttachPin(ledPin3, ledChannel3);
-
-
-  initWebSocket();
-  
-  // Web Server Root URL
-  server.on("/", HTTP_GET, [](AsyncWebServerRequest *request){
-    request->send(SPIFFS, "/index.html", "text/html");
-  });
-  
-  server.serveStatic("/", SPIFFS, "/");
-
-  // Start server
-  server.begin();
-
+  WiFi.begin(ssid, password);
+  Serial.println("Connecting");
+  while(WiFi.status() != WL_CONNECTED) {
+    delay(500);
+    Serial.print(".");
+  }
+  Serial.println("");
+  Serial.print("Connected to WiFi network with IP Address: ");
+  Serial.println(WiFi.localIP());
+ 
+  Serial.println("Timer set to 5 seconds (timerDelay variable), it will take 5 seconds before publishing the first reading.");
 }
 
-void loop() {
-  ledcWrite(ledChannel1, dutyCycle1);
-  ledcWrite(ledChannel2, dutyCycle2);
-  ledcWrite(ledChannel3, dutyCycle3);
 
-  ws.cleanupClients();
+void loop() {
+  //Send an HTTP POST request every 10 minutes
+  if ((millis() - lastTime) > timerDelay) {
+    //Check WiFi connection status
+    if(WiFi.status()== WL_CONNECTED){
+        getConfig();
+    }
+    else {
+      Serial.println("WiFi Disconnected");
+    }
+    lastTime = millis();
+  }
 }
