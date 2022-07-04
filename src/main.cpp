@@ -26,10 +26,10 @@ int rValue = 0;
 int gValue = 0;
 int bValue = 0;
 
-int tod; // "20:19:29"
-int sunrise_start; // "08:00"
-int sunset_start; // "20:00"
-int duration; // 30
+int tod = -1; // "20:19:29"
+int sunrise_start = -1; // "08:00"
+int sunset_start = -1; // "20:00"
+int duration = -1; // 30
 
 enum stage {pre_sunrise, sunrise, lights_on, sunset, post_sunset};
 
@@ -87,7 +87,8 @@ int timeInSeconds(String time){
   int firstColon = time.indexOf(':');
   int hour = time.substring(0,firstColon).toInt();
   int minutes =  time.substring(firstColon+1,firstColon+3).toInt();
-  int seconds = time.substring(firstColon+3).toInt();
+
+  int seconds = time.substring(time.indexOf(':',firstColon+1)+1).toInt();
   return hour*60*60+minutes*60+seconds;
 }
 
@@ -134,6 +135,48 @@ void assignConfigVariables(JsonObject doc){
     Serial.println(duration);
 }
 
+bool variablesInitialized(){
+  String s = ""; 
+  bool notInit = false;
+  if(tod < 0){
+    s.concat("tod uninitialized");
+    notInit = true;
+  }
+  if(sunrise_start < 0){
+    s.concat("sunrise uninitialized");
+    notInit = true;
+  }
+    if(sunset_start < 0){
+    s.concat("sunrise uninitialized");
+    notInit = true;
+  }
+    if(duration < 0){
+    s.concat("sunrise uninitialized");
+    notInit = true;
+  }
+
+  //return false if any variables was not initialized otherwise return true
+  if(notInit)
+    return false;
+  else 
+    return true;
+}
+
+//updates system time and brightness using existing variables if disconnected from wifi or heroku 
+void assignIfDisconnected(){
+    tod = (millis()-lastTime)/1000+tod; //increments tod by two seconds 
+    Serial.print("Difference in time since last call: ");
+    Serial.println((millis()-lastTime)/1000);
+    Serial.print("tod in time: ");
+    Serial.println(tod);
+    float brightness = getBrightness(tod, duration);
+    Serial.print("Brightness: ");
+    Serial.println(brightness);
+    rValue = (int)(rValue*brightness); // 0
+    gValue = (int)(gValue*brightness); // 255
+    bValue = (int)(bValue*brightness); // 255
+}
+
 void connectToWifi(){
   WiFi.begin(ssid, password);
   Serial.println("Connecting to wifi");
@@ -146,17 +189,84 @@ void connectToWifi(){
   Serial.println(WiFi.localIP());
 }
 
+void getInitialConfigFromHeroku(){
+     HTTPClient http;
+
+    String serverPath = serverName + "config";
+
+    // Your Domain name with URL path or IP address with path
+    http.begin(serverPath.c_str());
+    
+    // Send HTTP GET request
+    int httpResponseCode = http.GET();
+    if(httpResponseCode!=201){
+      Serial.println("Unable to connect to heroku for initial setup, attempting to reconnect");
+    }
+    while(httpResponseCode!=201){
+      delay(500);
+      Serial.print(".");
+      httpResponseCode = http.GET();
+    }
+    if (httpResponseCode>0) {
+      Serial.println("\nSucessfully connected to heroku");
+
+      //getting response code
+      Serial.print("HTTP Response code: ");
+      Serial.println(httpResponseCode);
+
+      //payload JSON as string 
+      String input = http.getString();
+      Serial.println(input);
+
+
+      StaticJsonDocument<384> doc;
+      DeserializationError error = deserializeJson(doc, input);
+
+      if (error) {
+        Serial.print("deserializeJson() failed: ");
+        Serial.println(error.c_str());
+      } else{
+        JsonObject object = doc.as<JsonObject>();
+        assignConfigVariables(object);
+      }
+
+      //end connection
+      http.end();
+
+      if(!variablesInitialized()){
+        //reattempt to connect to heroku if failed at this juncture
+        Serial.println("Config variables were not properly recieved for initial setup, attempting to reconnect");
+        getInitialConfigFromHeroku();
+      } else{
+        Serial.println("Sucessfully configured config variables on system, turning lights on to config settings");
+        writeLED(rValue, gValue, bValue);
+      }
+    }
+}
+
 
 void setup() {
   Serial.begin(115200); 
 
-  connectToWifi();
- 
-  Serial.println("Timer set to 5 seconds (timerDelay variable), it will take 5 seconds before publishing the first reading.");
-
   pinMode(redPin, OUTPUT);
   pinMode(greenPin, OUTPUT);
   pinMode(bluePin, OUTPUT);
+
+  connectToWifi();
+  Serial.println("Timer set to 2 seconds (timerDelay variable), it will take 2 seconds before first attempting connection to heroku.");
+  getInitialConfigFromHeroku();
+
+  /*time format to seconds testing 
+  Serial.print("Time check");
+  Serial.println(timeInSeconds("14:59:59"));
+    Serial.print("Time check");
+  Serial.println(timeInSeconds("14:59:06"));
+    Serial.print("Time check");
+  Serial.println(timeInSeconds("14:1:5"));
+      Serial.print("Time check");
+  Serial.println(timeInSeconds("14:1:54"));
+  */
+
 }
 
 
@@ -195,12 +305,14 @@ void loop() {
         } else{
           JsonObject object = doc.as<JsonObject>();
           assignConfigVariables(object);
+          writeLED(rValue, gValue, bValue);
         }
-        writeLED(rValue, gValue, bValue);
       }
       else {
         Serial.print("Error code: ");
         Serial.println(httpResponseCode);
+        Serial.println("Could not restablish heroku connection, resorting to updating with current system data until connection can be restablished");
+        assignIfDisconnected();
       }
       // Free resources
       http.end();
@@ -208,8 +320,13 @@ void loop() {
     else {
       Serial.println("WiFi Disconnected");
       //restablish wifi connection 
-      connectToWifi(); 
-      //once connection is restablished, loop begins again 
+      WiFi.begin(ssid, password); //attempt once to restablish connection 
+      if(WiFi.status() != WL_CONNECTED){
+        Serial.println("Could not restablish wifi connection, resorting to updating with current system data");
+        assignIfDisconnected();
+      } else{
+        Serial.println("Restablished wifi connection");
+      }
     }
     lastTime = millis();
   }
