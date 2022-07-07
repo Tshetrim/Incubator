@@ -3,11 +3,11 @@
 #include <ArduinoJson.h>
 
 
-const char* ssid = "SSID"; //input ssid here
-const char* password = "Password"; //input password to network here 
+const char* ssid = "ssid"; //input ssid here
+const char* password = "password"; //input password to network here 
 
 //Your Domain name with URL path or IP address with path
-String serverName = "https://happy-fish.herokuapp.com/esp32/";
+String serverName = "https://qc-incubator.herokuapp.com/esp32/";
 
 // the following variables are unsigned longs because the time, measured in
 // milliseconds, will quickly become a bigger number than can be stored in an int.
@@ -26,14 +26,15 @@ int rValue = 0;
 int gValue = 0;
 int bValue = 0;
 
-int tod = -1; // "20:19:29"
-int sunrise_start = -1; // "08:00"
-int sunset_start = -1; // "20:00"
-int duration = -1; // 30
+int tod = -1; // "20:19:29" -> int = 73169 (sec)
+int sunrise_start = -1; // "08:00" -> int -> 28800 (sec)
+int sunset_start = -1; // "20:00" -> int -> 72000 (sec)
+int duration = -1; // 60 mins -> 3600 (sec)
 
 enum stage {pre_sunrise, sunrise, lights_on, sunset, post_sunset};
 
-int timeCheck = 0;
+//for checking 
+//int timeCheck = 28800;
 
 stage getStage(int seconds, int duration) {
   if (seconds < sunrise_start) {
@@ -83,6 +84,7 @@ void writeLED(int r, int g, int b){
 
 
 //time format: hh:mm:ss
+//no longer needed because getting second value already calculated from heroku but keeping in case needed again 
 int timeInSeconds(String time){
   int firstColon = time.indexOf(':');
   int hour = time.substring(0,firstColon).toInt();
@@ -92,21 +94,27 @@ int timeInSeconds(String time){
   return hour*60*60+minutes*60+seconds;
 }
 
+
 void assignConfigVariables(JsonObject doc){
-    String todStr = doc["tod"]; // "20:29:39"
-    String sunriseStr = doc["sunrise"]; // "08:00"
-    String sunsetStr = doc["sunset"]; // "20:00"
-    tod = timeInSeconds(todStr);
+    // String todStr = doc["tod"]; // "20:29:39"
+    // String sunriseStr = doc["sunrise"]; // "08:00"
+    // String sunsetStr = doc["sunset"]; // "20:00"
+    // tod = timeInSeconds(todStr);
 
     //testing time skip 
     //tod = 25200 + timeCheck;
     //tod = 71998 + timeCheck;
-    //timeCheck = timeCheck + 1800; //increment by 1 minute each time 
+    //timeCheck = timeCheck + 60; //increment by 1 minute each time 
+    //tod = timeCheck; 
 
-    sunrise_start = timeInSeconds(sunriseStr);
-    sunset_start = timeInSeconds(sunsetStr);
-    duration = doc["duration"]; // 30
-      duration = duration * 60;
+    // sunrise_start = timeInSeconds(sunriseStr);
+    // sunset_start = timeInSeconds(sunsetStr);
+
+    tod = doc["tod"];
+    sunrise_start = doc["sunrise"];
+    sunset_start = doc["sunset"];
+    duration = doc["duration"]; // 60
+      duration = duration * 60; 
     rValue = doc["rValue"]; // 0
     gValue = doc["gValue"]; // 255
     bValue = doc["bValue"]; // 255
@@ -165,6 +173,10 @@ bool variablesInitialized(){
 //updates system time and brightness using existing variables if disconnected from wifi or heroku 
 void assignIfDisconnected(){
     tod = (millis()-lastTime)/1000+tod; //increments tod by two seconds 
+
+    //if tod is greater than 24:00, resets to 00:00+time since last ~ 00:02 first time 
+    if(tod>86400)
+      tod = tod-86400;
     Serial.print("Difference in time since last call: ");
     Serial.println((millis()-lastTime)/1000);
     Serial.print("tod in time: ");
@@ -302,6 +314,10 @@ void loop() {
         if (error) {
           Serial.print("deserializeJson() failed: ");
           Serial.println(error.c_str());
+
+          Serial.print("Running off of previous system variables  ");
+          assignIfDisconnected();
+
         } else{
           JsonObject object = doc.as<JsonObject>();
           assignConfigVariables(object);
@@ -328,6 +344,10 @@ void loop() {
         Serial.println("Restablished wifi connection");
       }
     }
+    lastTime = millis();
+  }
+  //if millis() overflows and becomes 0 again, lastTime will still be near max of long, and in that case, set last to millis() to reset cand continue 
+  else if(lastTime>millis()){
     lastTime = millis();
   }
 }
