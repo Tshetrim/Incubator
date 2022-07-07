@@ -1,182 +1,353 @@
-/* 
-  Rui Santos
-  Complete project details at https://RandomNerdTutorials.com/esp32-web-server-websocket-sliders/
-  
-  Permission is hereby granted, free of charge, to any person obtaining a copy
-  of this software and associated documentation files.
-  
-  The above copyright notice and this permission notice shall be included in all
-  copies or substantial portions of the Software.
-*/
-
-#include <Arduino.h>
 #include <WiFi.h>
-#include <AsyncTCP.h>
-#include <ESPAsyncWebServer.h>
-#include "SPIFFS.h"
-#include <Arduino_JSON.h>
+#include <HTTPClient.h>
+#include <ArduinoJson.h>
 
-// Replace with your network credentials
-const char* ssid = "SSID12345"; //sett to ssid 
-const char* password = "1234567890"; //set to password
 
-// Create AsyncWebServer object on port 80
-AsyncWebServer server(80);
-// Create a WebSocket object
+const char* ssid = "ssid"; //input ssid here
+const char* password = "password"; //input password to network here 
 
-AsyncWebSocket ws("/ws");
+//Your Domain name with URL path or IP address with path
+String serverName = "https://qc-incubator.herokuapp.com/esp32/";
+
+// the following variables are unsigned longs because the time, measured in
+// milliseconds, will quickly become a bigger number than can be stored in an int.
+unsigned long lastTime = 0;
+// Timer set to 10 minutes (600000)
+//unsigned long timerDelay = 600000;
+// Set timer to 5 seconds (5000)
+unsigned long timerDelay = 2000;
+
 // Set LED GPIO
-const int ledPin1 = 25;
-const int ledPin2 = 26;
-const int ledPin3 = 27;
+const int redPin = 25;
+const int greenPin = 26;
+const int bluePin = 27;
 
-String message = "";
-String sliderValue1 = "0";
-String sliderValue2 = "0";
-String sliderValue3 = "0";
+int rValue = 0;
+int gValue = 0;
+int bValue = 0;
 
-int dutyCycle1;
-int dutyCycle2;
-int dutyCycle3;
+int tod = -1; // "20:19:29" -> int = 73169 (sec)
+int sunrise_start = -1; // "08:00" -> int -> 28800 (sec)
+int sunset_start = -1; // "20:00" -> int -> 72000 (sec)
+int duration = -1; // 60 mins -> 3600 (sec)
 
-// setting PWM properties
-const int freq = 5000;
-const int ledChannel1 = 0;
-const int ledChannel2 = 1;
-const int ledChannel3 = 2;
+enum stage {pre_sunrise, sunrise, lights_on, sunset, post_sunset};
 
-const int resolution = 8;
+//for checking 
+//int timeCheck = 28800;
 
-//Json Variable to Hold Slider Values
-JSONVar sliderValues;
-
-//Get Slider Values
-String getSliderValues(){
-  sliderValues["sliderValue1"] = String(sliderValue1);
-  sliderValues["sliderValue2"] = String(sliderValue2);
-  sliderValues["sliderValue3"] = String(sliderValue3);
-
-  String jsonString = JSON.stringify(sliderValues);
-  return jsonString;
-}
-
-// Initialize SPIFFS
-void initFS() {
-  if (!SPIFFS.begin()) {
-    Serial.println("An error has occurred while mounting SPIFFS");
+stage getStage(int seconds, int duration) {
+  if (seconds < sunrise_start) {
+    return pre_sunrise;
+  } 
+  if (seconds < sunrise_start + duration) {
+    return sunrise;
   }
-  else{
-   Serial.println("SPIFFS mounted successfully");
+  if (seconds < sunset_start) {
+    return lights_on;
+  }
+  if (seconds < sunset_start + duration) {
+    return sunset;
+  }
+  else {
+    return post_sunset;
   }
 }
 
-// Initialize WiFi
-void initWiFi() {
-  WiFi.mode(WIFI_STA);
+float getBrightness(int seconds, int duration) {
+
+  stage s = getStage(seconds, duration);
+  Serial.print("stage: ");
+  Serial.println(s);
+
+  if (s == pre_sunrise || s == post_sunset) {
+    return 0.0;
+  }
+
+  if (s == sunrise) {
+    return float(seconds - sunrise_start) / float(duration);
+  }
+
+  if (s == sunset) {
+    return 1 - (float(seconds - sunset_start) / float(duration));
+  }
+
+  return 1.0;
+}
+
+
+void writeLED(int r, int g, int b){
+  analogWrite(redPin, r);
+  analogWrite(bluePin, b);
+  analogWrite(greenPin, g);
+}
+
+
+//time format: hh:mm:ss
+//no longer needed because getting second value already calculated from heroku but keeping in case needed again 
+int timeInSeconds(String time){
+  int firstColon = time.indexOf(':');
+  int hour = time.substring(0,firstColon).toInt();
+  int minutes =  time.substring(firstColon+1,firstColon+3).toInt();
+
+  int seconds = time.substring(time.indexOf(':',firstColon+1)+1).toInt();
+  return hour*60*60+minutes*60+seconds;
+}
+
+
+void assignConfigVariables(JsonObject doc){
+    // String todStr = doc["tod"]; // "20:29:39"
+    // String sunriseStr = doc["sunrise"]; // "08:00"
+    // String sunsetStr = doc["sunset"]; // "20:00"
+    // tod = timeInSeconds(todStr);
+
+    //testing time skip 
+    //tod = 25200 + timeCheck;
+    //tod = 71998 + timeCheck;
+    //timeCheck = timeCheck + 60; //increment by 1 minute each time 
+    //tod = timeCheck; 
+
+    // sunrise_start = timeInSeconds(sunriseStr);
+    // sunset_start = timeInSeconds(sunsetStr);
+
+    tod = doc["tod"];
+    sunrise_start = doc["sunrise"];
+    sunset_start = doc["sunset"];
+    duration = doc["duration"]; // 60
+      duration = duration * 60; 
+    rValue = doc["rValue"]; // 0
+    gValue = doc["gValue"]; // 255
+    bValue = doc["bValue"]; // 255
+
+    float brightness = getBrightness(tod, duration);
+    Serial.print("Brightness: ");
+    Serial.println(brightness);
+    rValue = (int)(rValue*brightness); // 0
+    gValue = (int)(gValue*brightness); // 255
+    bValue = (int)(bValue*brightness); // 255
+    
+    Serial.print("r: ");
+    Serial.println(rValue);
+    Serial.print("g: ");
+    Serial.println(gValue);
+    Serial.print("b: ");
+    Serial.println(bValue);
+
+    Serial.print("tod in time: ");
+    Serial.println(tod);
+        Serial.print("sunrise in time: ");
+    Serial.println(sunrise_start);
+        Serial.print("sunset in time: ");
+    Serial.println(sunset_start);
+        Serial.print("duration: ");
+    Serial.println(duration);
+}
+
+bool variablesInitialized(){
+  String s = ""; 
+  bool notInit = false;
+  if(tod < 0){
+    s.concat("tod uninitialized");
+    notInit = true;
+  }
+  if(sunrise_start < 0){
+    s.concat("sunrise uninitialized");
+    notInit = true;
+  }
+    if(sunset_start < 0){
+    s.concat("sunrise uninitialized");
+    notInit = true;
+  }
+    if(duration < 0){
+    s.concat("sunrise uninitialized");
+    notInit = true;
+  }
+
+  //return false if any variables was not initialized otherwise return true
+  if(notInit)
+    return false;
+  else 
+    return true;
+}
+
+//updates system time and brightness using existing variables if disconnected from wifi or heroku 
+void assignIfDisconnected(){
+    tod = (millis()-lastTime)/1000+tod; //increments tod by two seconds 
+
+    //if tod is greater than 24:00, resets to 00:00+time since last ~ 00:02 first time 
+    if(tod>86400)
+      tod = tod-86400;
+    Serial.print("Difference in time since last call: ");
+    Serial.println((millis()-lastTime)/1000);
+    Serial.print("tod in time: ");
+    Serial.println(tod);
+    float brightness = getBrightness(tod, duration);
+    Serial.print("Brightness: ");
+    Serial.println(brightness);
+    rValue = (int)(rValue*brightness); // 0
+    gValue = (int)(gValue*brightness); // 255
+    bValue = (int)(bValue*brightness); // 255
+}
+
+void connectToWifi(){
   WiFi.begin(ssid, password);
-  Serial.print("Connecting to WiFi ..");
-  while (WiFi.status() != WL_CONNECTED) {
-    Serial.print('.');
-    delay(1000);
+  Serial.println("Connecting to wifi");
+  while(WiFi.status() != WL_CONNECTED) {
+    delay(500);
+    Serial.print(".");
   }
+  Serial.println("");
+  Serial.print("Connected to WiFi network with IP Address: ");
   Serial.println(WiFi.localIP());
 }
 
-void notifyClients(String sliderValues) {
-  ws.textAll(sliderValues);
-}
+void getInitialConfigFromHeroku(){
+     HTTPClient http;
 
-void handleWebSocketMessage(void *arg, uint8_t *data, size_t len) {
-  AwsFrameInfo *info = (AwsFrameInfo*)arg;
-  if (info->final && info->index == 0 && info->len == len && info->opcode == WS_TEXT) {
-    data[len] = 0;
-    message = (char*)data;
-    if (message.indexOf("1s") >= 0) {
-      sliderValue1 = message.substring(2);
-      dutyCycle1 = map(sliderValue1.toInt(), 0, 100, 0, 255);
-      Serial.println(dutyCycle1);
-      Serial.print(getSliderValues());
-      notifyClients(getSliderValues());
-    }
-    if (message.indexOf("2s") >= 0) {
-      sliderValue2 = message.substring(2);
-      dutyCycle2 = map(sliderValue2.toInt(), 0, 100, 0, 255);
-      Serial.println(dutyCycle2);
-      Serial.print(getSliderValues());
-      notifyClients(getSliderValues());
-    }    
-    if (message.indexOf("3s") >= 0) {
-      sliderValue3 = message.substring(2);
-      dutyCycle3 = map(sliderValue3.toInt(), 0, 100, 0, 255);
-      Serial.println(dutyCycle3);
-      Serial.print(getSliderValues());
-      notifyClients(getSliderValues());
-    }
-    if (strcmp((char*)data, "getValues") == 0) {
-      notifyClients(getSliderValues());
-    }
-  }
-}
-void onEvent(AsyncWebSocket *server, AsyncWebSocketClient *client, AwsEventType type, void *arg, uint8_t *data, size_t len) {
-  switch (type) {
-    case WS_EVT_CONNECT:
-      Serial.printf("WebSocket client #%u connected from %s\n", client->id(), client->remoteIP().toString().c_str());
-      break;
-    case WS_EVT_DISCONNECT:
-      Serial.printf("WebSocket client #%u disconnected\n", client->id());
-      break;
-    case WS_EVT_DATA:
-      handleWebSocketMessage(arg, data, len);
-      break;
-    case WS_EVT_PONG:
-    case WS_EVT_ERROR:
-      break;
-  }
-}
+    String serverPath = serverName + "config";
 
-void initWebSocket() {
-  ws.onEvent(onEvent);
-  server.addHandler(&ws);
+    // Your Domain name with URL path or IP address with path
+    http.begin(serverPath.c_str());
+    
+    // Send HTTP GET request
+    int httpResponseCode = http.GET();
+    if(httpResponseCode!=201){
+      Serial.println("Unable to connect to heroku for initial setup, attempting to reconnect");
+    }
+    while(httpResponseCode!=201){
+      delay(500);
+      Serial.print(".");
+      httpResponseCode = http.GET();
+    }
+    if (httpResponseCode>0) {
+      Serial.println("\nSucessfully connected to heroku");
+
+      //getting response code
+      Serial.print("HTTP Response code: ");
+      Serial.println(httpResponseCode);
+
+      //payload JSON as string 
+      String input = http.getString();
+      Serial.println(input);
+
+
+      StaticJsonDocument<384> doc;
+      DeserializationError error = deserializeJson(doc, input);
+
+      if (error) {
+        Serial.print("deserializeJson() failed: ");
+        Serial.println(error.c_str());
+      } else{
+        JsonObject object = doc.as<JsonObject>();
+        assignConfigVariables(object);
+      }
+
+      //end connection
+      http.end();
+
+      if(!variablesInitialized()){
+        //reattempt to connect to heroku if failed at this juncture
+        Serial.println("Config variables were not properly recieved for initial setup, attempting to reconnect");
+        getInitialConfigFromHeroku();
+      } else{
+        Serial.println("Sucessfully configured config variables on system, turning lights on to config settings");
+        writeLED(rValue, gValue, bValue);
+      }
+    }
 }
 
 
 void setup() {
-  Serial.begin(115200);
-  pinMode(ledPin1, OUTPUT);
-  pinMode(ledPin2, OUTPUT);
-  pinMode(ledPin3, OUTPUT);
-  initFS();
-  initWiFi();
+  Serial.begin(115200); 
 
-  // configure LED PWM functionalitites
-  ledcSetup(ledChannel1, freq, resolution);
-  ledcSetup(ledChannel2, freq, resolution);
-  ledcSetup(ledChannel3, freq, resolution);
+  pinMode(redPin, OUTPUT);
+  pinMode(greenPin, OUTPUT);
+  pinMode(bluePin, OUTPUT);
 
-  // attach the channel to the GPIO to be controlled
-  ledcAttachPin(ledPin1, ledChannel1);
-  ledcAttachPin(ledPin2, ledChannel2);
-  ledcAttachPin(ledPin3, ledChannel3);
+  connectToWifi();
+  Serial.println("Timer set to 2 seconds (timerDelay variable), it will take 2 seconds before first attempting connection to heroku.");
+  getInitialConfigFromHeroku();
 
-
-  initWebSocket();
-  
-  // Web Server Root URL
-  server.on("/", HTTP_GET, [](AsyncWebServerRequest *request){
-    request->send(SPIFFS, "/index.html", "text/html");
-  });
-  
-  server.serveStatic("/", SPIFFS, "/");
-
-  // Start server
-  server.begin();
+  /*time format to seconds testing 
+  Serial.print("Time check");
+  Serial.println(timeInSeconds("14:59:59"));
+    Serial.print("Time check");
+  Serial.println(timeInSeconds("14:59:06"));
+    Serial.print("Time check");
+  Serial.println(timeInSeconds("14:1:5"));
+      Serial.print("Time check");
+  Serial.println(timeInSeconds("14:1:54"));
+  */
 
 }
 
-void loop() {
-  ledcWrite(ledChannel1, dutyCycle1);
-  ledcWrite(ledChannel2, dutyCycle2);
-  ledcWrite(ledChannel3, dutyCycle3);
 
-  ws.cleanupClients();
+void loop() {
+  //Send an HTTP POST request every timerDelay minutes
+  if ((millis() - lastTime) > timerDelay) {
+    Serial.println("Timer delay has passed, checking wifi status");
+    //Check WiFi connection status
+    if(WiFi.status()== WL_CONNECTED){
+      Serial.println("Wifi is connected, trying to send get request");
+      HTTPClient http;
+
+      String serverPath = serverName + "config";
+
+      // Your Domain name with URL path or IP address with path
+      http.begin(serverPath.c_str());
+      
+      // Send HTTP GET request
+      int httpResponseCode = http.GET();
+      if (httpResponseCode>0) {
+        //getting response code
+        Serial.print("HTTP Response code: ");
+        Serial.println(httpResponseCode);
+
+        //payload JSON as string 
+        String input = http.getString();
+        Serial.println(input);
+
+
+        StaticJsonDocument<384> doc;
+        DeserializationError error = deserializeJson(doc, input);
+
+        if (error) {
+          Serial.print("deserializeJson() failed: ");
+          Serial.println(error.c_str());
+
+          Serial.print("Running off of previous system variables  ");
+          assignIfDisconnected();
+
+        } else{
+          JsonObject object = doc.as<JsonObject>();
+          assignConfigVariables(object);
+          writeLED(rValue, gValue, bValue);
+        }
+      }
+      else {
+        Serial.print("Error code: ");
+        Serial.println(httpResponseCode);
+        Serial.println("Could not restablish heroku connection, resorting to updating with current system data until connection can be restablished");
+        assignIfDisconnected();
+      }
+      // Free resources
+      http.end();
+    }
+    else {
+      Serial.println("WiFi Disconnected");
+      //restablish wifi connection 
+      WiFi.begin(ssid, password); //attempt once to restablish connection 
+      if(WiFi.status() != WL_CONNECTED){
+        Serial.println("Could not restablish wifi connection, resorting to updating with current system data");
+        assignIfDisconnected();
+      } else{
+        Serial.println("Restablished wifi connection");
+      }
+    }
+    lastTime = millis();
+  }
+  //if millis() overflows and becomes 0 again, lastTime will still be near max of long, and in that case, set last to millis() to reset cand continue 
+  else if(lastTime>millis()){
+    lastTime = millis();
+  }
 }
