@@ -1,13 +1,16 @@
 #include <WiFi.h>
 #include <HTTPClient.h>
 #include <ArduinoJson.h>
+#include <WiFiManager.h>         //https://github.com/tzapu/WiFiManager
 
+WiFiManager wm;
+boolean initialTimeOut = true;
 
-const char* ssid = "ssid"; //input ssid here
-const char* password = "password"; //input password to network here 
+const char * apName = "Incubator AP";
+const char * apPassword = "password";
 
 //Your Domain name with URL path or IP address with path
-String serverName = "https://qc-incubator.herokuapp.com/esp32/";
+String serverName = "https://qc-incubator.herokuapp.com/esp32/config";
 
 // the following variables are unsigned longs because the time, measured in
 // milliseconds, will quickly become a bigger number than can be stored in an int.
@@ -15,7 +18,7 @@ unsigned long lastTime = 0;
 // Timer set to 10 minutes (600000)
 //unsigned long timerDelay = 600000;
 // Set timer to 5 seconds (5000)
-unsigned long timerDelay = 2000;
+unsigned long timerDelay = 10000;
 
 // Set LED GPIO
 const int redPin = 25;
@@ -189,22 +192,48 @@ void assignIfDisconnected(){
     bValue = (int)(bValue*brightness); // 255
 }
 
+
 void connectToWifi(){
-  WiFi.begin(ssid, password);
-  Serial.println("Connecting to wifi");
-  while(WiFi.status() != WL_CONNECTED) {
-    delay(500);
-    Serial.print(".");
+
+    bool res;
+    // res = wm.autoConnect(); // auto generated AP name from chipid
+    // res = wm.autoConnect("AutoConnectAP"); // anonymous ap
+    res = wm.autoConnect("Incubator AP","password"); // password protected ap
+
+    if(!res) {
+        Serial.println("Failed to connect");
+        // ESP.restart();
+    } 
+    else {
+        //if you get here you have connected to the WiFi    
+        Serial.println("Sucessfully connected to Wifi Network");
+    }
+
+    // WiFi.begin(ssid, password);
+    // Serial.println("Connecting to wifi");
+    // while(WiFi.status() != WL_CONNECTED) {
+    //   delay(500);
+    //   Serial.print(".");
+    // }
+    // Serial.println("");
+    // Serial.print("Connected to WiFi network with IP Address: ");
+    // Serial.println(WiFi.localIP());
+}
+
+void stopClientAndConnect(){
+  if(!initialTimeOut){
+    Serial.println("Restarting config server and attempting autoconnect");
+    connectToWifi();
+  } else{
+    initialTimeOut = false;
   }
-  Serial.println("");
-  Serial.print("Connected to WiFi network with IP Address: ");
-  Serial.println(WiFi.localIP());
+  wm.stopConfigPortal();
 }
 
 void getInitialConfigFromHeroku(){
-     HTTPClient http;
+    HTTPClient http;
 
-    String serverPath = serverName + "config";
+    String serverPath = serverName;
 
     // Your Domain name with URL path or IP address with path
     http.begin(serverPath.c_str());
@@ -257,6 +286,7 @@ void getInitialConfigFromHeroku(){
 }
 
 
+
 void setup() {
   Serial.begin(115200); 
 
@@ -264,8 +294,32 @@ void setup() {
   pinMode(greenPin, OUTPUT);
   pinMode(bluePin, OUTPUT);
 
+  //wm.setDebugOutput(false); //if false, stops printing debug output, default is true
+  wm.setAPClientCheck(true); //once client connects to AP, timeout is disabled and portal becomes blocking until exit
+  wm.setConfigPortalTimeout(60); //after 1 minute of inactivity on wifi portal, the portal will timeout 
+  wm.setConfigPortalTimeoutCallback(stopClientAndConnect); //on portal timeout, the esp32 will restart 
+  
+  //wm.setParamsPage(true);
+  //WiFiManagerParameter end_point_text_box("End Point", "Modify API End Point", "https://qc-incubator.herokuapp.com/esp32/config", 50);
+  //wm.addParameter(&end_point_text_box);
+  
+  digitalWrite(redPin, HIGH);
+  wm.startConfigPortal(apName, apPassword);
+  digitalWrite(redPin, LOW);
+
+  Serial.println("Initial Config Portal stopped ");
+
+  //possible issue if connected to a wifi with captive portal, unable to access AP because auto-connect prevents spin-up
+  digitalWrite(bluePin, HIGH);
   connectToWifi();
-  Serial.println("Timer set to 2 seconds (timerDelay variable), it will take 2 seconds before first attempting connection to heroku.");
+  digitalWrite(bluePin, LOW);
+  
+  digitalWrite(greenPin, HIGH);
+  delay(3000);
+  digitalWrite(greenPin, LOW);
+  // Serial.println(end_point_text_box.getValue());
+
+  Serial.println("Timer set to 10 seconds (timerDelay variable), it will take 10 seconds before first attempting connection to heroku.");
   getInitialConfigFromHeroku();
 
   /*time format to seconds testing 
@@ -291,7 +345,7 @@ void loop() {
       Serial.println("Wifi is connected, trying to send get request");
       HTTPClient http;
 
-      String serverPath = serverName + "config";
+      String serverPath = serverName;
 
       // Your Domain name with URL path or IP address with path
       http.begin(serverPath.c_str());
@@ -336,6 +390,9 @@ void loop() {
     else {
       Serial.println("WiFi Disconnected");
       //restablish wifi connection 
+      char * ssid = (char*)wm.getWiFiSSID(true).c_str();
+      char * password = (char*)wm.getWiFiPass(true).c_str();
+
       WiFi.begin(ssid, password); //attempt once to restablish connection 
       if(WiFi.status() != WL_CONNECTED){
         Serial.println("Could not restablish wifi connection, resorting to updating with current system data");
