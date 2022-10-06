@@ -100,7 +100,6 @@ void assignConfigVariables(JsonObject doc){
     // String sunriseStr = doc["sunrise"]; // "08:00"
     // String sunsetStr = doc["sunset"]; // "20:00"
     // tod = timeInSeconds(todStr);
-
     //testing time skip 
     //tod = 25200 + timeCheck;
     //tod = 71998 + timeCheck;
