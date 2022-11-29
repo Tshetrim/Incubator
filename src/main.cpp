@@ -10,7 +10,10 @@ const char * apName = "Incubator AP";
 const char * apPassword = "password";
 
 //Your Domain name with URL path or IP address with path
-String serverName = "https://qc-incubator.herokuapp.com/esp32/config";
+String serverName = "https://qc-incubator.up.railway.app/esp32/config";
+
+uint8_t newMACAddress[] = {0x00, 0x00, 0x00, 0x00, 0x00, 0x00};
+boolean spoof = false;
 
 // the following variables are unsigned longs because the time, measured in
 // milliseconds, will quickly become a bigger number than can be stored in an int.
@@ -192,12 +195,29 @@ void assignIfDisconnected(){
     bValue = (int)(bValue*brightness); // 255
 }
 
+void setMacAddress(){
+  
+  Serial.print("[OLD] ESP32 Board MAC Address:  ");
+  Serial.println(WiFi.macAddress());
+  
+  // ESP32 Board add-on before version < 1.0.5
+  //esp_wifi_set_mac(ESP_IF_WIFI_STA, &newMACAddress[0]);
+  
+  // ESP32 Board add-on after version > 1.0.5
+  if(spoof)
+    esp_wifi_set_mac(WIFI_IF_STA, &newMACAddress[0]);
+  
+  Serial.print("[NEW] ESP32 Board MAC Address:  ");
+  Serial.println(WiFi.macAddress());
+}
+
 
 void connectToWifi(){
 
     bool res;
     // res = wm.autoConnect(); // auto generated AP name from chipid
     // res = wm.autoConnect("AutoConnectAP"); // anonymous ap
+    setMacAddress();
     res = wm.autoConnect("Incubator AP","password"); // password protected ap
 
     if(!res) {
