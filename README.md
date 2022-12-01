@@ -13,7 +13,7 @@
     <a href="https://github.com/Tshetrim/Incubator"><strong>Explore the docs »</strong></a>
     <br />
     <br />
-    <a href="https://github.com/Tshetrim/Incubator">View Demo</a>
+    <a href="https://qc-incubator.up.railway.app/esp32/dashboard">View Demo</a>
     ·
     <a href="https://github.com/Tshetrim/Incubator/issues">Report Bug</a>
     ·
@@ -44,6 +44,11 @@ Script for ESP32 using Arduino to connect to wifi as a client and request config
 
 https://github.com/Tshetrim/HappyFish
 
+To see the control portal:
+https://qc-incubator.up.railway.app/esp32/dashboard 
+
+*note: changes will only be saved if you login, see below for directions*
+
 
 <p align="right">(<a href="#readme-top">back to top</a>)</p>
 
@@ -54,8 +59,8 @@ https://github.com/Tshetrim/HappyFish
 
 **note: The term Incubator and ESP32 will be used interchangably here, the ESP32 is the microcontroller embedded within the incubator for this use case** 
 ### 1. Starting the Incubator (specific use case)
-    Once the Incubator is connected to the outlet, turn on the main switch then make sure the O/I light switch on the top is also switched towards the I
-    That will turn on the ESP32 which allows the light changing 
+Once the Incubator is connected to the outlet, turn on the main switch then make sure the O/I light switch on the top is also switched towards the I
+That will turn on the ESP32 which allows the light changing 
 ### 2. Connecting the Incubator (ESP32) to Wi-Fi    --- (only needs to be once, or if changing Wi-Fi)
     - Once the Incubator is on, the light will be RED for 60 seconds 
     - In that timeframe you can connect to the Incubator using a device such as a phone or laptop by going to the networks
@@ -74,10 +79,11 @@ https://github.com/Tshetrim/HappyFish
 ### 3. Controlling the Incubator 
 
 #### Logging In to make changes: 
-    - Once the Incubator is connected to Wi-Fi, you can access the dashboard by going to this website: 
-        https://qc-incubator.up.railway.app/esp32
-    - Enter the password (to be sent separetely) and you will be able to make changes to the settings that will save 
-    - note make sure you are logged in for changes to save, if you read the message at the top, it will notify you if you are not logged in 
+- Once the Incubator is connected to Wi-Fi, you can access the dashboard by going to this website:
+
+https://qc-incubator.up.railway.app/esp32
+- Enter the password (to be sent separetely) and you will be able to make changes to the settings that will save 
+- note make sure you are logged in for changes to save, if you read the message at the top, it will notify you if you are not logged in 
 
 #### Setting Controls:  
     - Time: Once you can view the dashboard, the first thing to note is the Incubator is running on UTC TIME, the one outlined in a green box.
@@ -87,7 +93,12 @@ https://github.com/Tshetrim/HappyFish
         - To have no fade in/ fade out, simply set the duration to 0 
     - Color: Slide the RGB colors to change the color of the incubator
 
-<img src="images/dashboard.png" alt="dashboard webpage" width="200" height="200">
+#### Other Important Notes: 
+- The Incubator will always have the 60 second buffer on startup/restart where it will allow connections to change the Wi-Fi
+- If already set before, simply let that timer run out and the Incubator will automatically connect to the wifi 
+- When changing controls, it will take 10 SECONDS or less for the controls to actually reflect because the Incubator only checks for a change every 10 seconds 
+
+<img src="images/dashboard.png" alt="dashboard webpage">
 
 <p align="right">(<a href="#readme-top">back to top</a>)</p>
 
