@@ -2,7 +2,7 @@
 <br />
 <div align="center">
   <a href="https://github.com/Tshetrim/Incubator">
-    <img src="images/incubator-image.png" alt="Logo" width="80" height="80">
+    <img src="images/incubator-image-blue.png" alt="Logo">
   </a>
 
 <h3 align="center">Incubator</h3>
