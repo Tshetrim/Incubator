@@ -79,7 +79,7 @@ That will turn on the ESP32 which allows the light changing
 ### 3. Controlling the Incubator 
 
 #### Logging In to make changes: 
-- Once the Incubator is connected to Wi-Fi, you can access the dashboard by going to this website:
+- Once the Incubator is connected to Wi-Fi, you can change its behavior by accessing the control dashboard by going to this website:
 
 https://qc-incubator.up.railway.app/esp32
 - Enter the password (to be sent separetely) and you will be able to make changes to the settings that will save 
