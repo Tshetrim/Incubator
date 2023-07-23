@@ -10,7 +10,7 @@
   <p align="center">
     Automated Controllable IOT Lighting
     <br />
-    <a href="https://github.com/Tshetrim/Incubator"><strong>Explore the docs »</strong></a>
+    <a href="#development"><strong>Explore the docs »</strong></a>
     <br />
     <br />
     <a href="https://qc-incubator.up.railway.app/esp32/dashboard">View Demo</a>
@@ -31,6 +31,7 @@
       <a href="#about-the-project">About The Project</a>
     </li>
     <li><a href="#usage">Usage</a></li>
+    <li><a href="#development">Development</a></li>
   </ol>
 </details>
 
@@ -102,6 +103,42 @@ https://qc-incubator.up.railway.app/esp32
 
 <p align="right">(<a href="#readme-top">back to top</a>)</p>
 
+<!-- Development -->
+## Development
+### 1. Getting Started with uploading
+Download the ZIP file or do:
+```git clone https://github.com/Tshetrim/Incubator.git```
+
+Once files are installed to your desktop, open up an IDE for uploading scripts to ESP32. 
+I used [VSCode](https://code.visualstudio.com/) with [PlatformIO Extension ](https://platformio.org/install/ide?install=vscode)
+
+If new to development, I reccomend watching a tutorial on how to use and upload code to ESP32 with VSCode and PlatformIO like this [video](https://platformio.org/install/ide?install=vscode)
+  Key Reminders:[Hold ESP32's Boot button while connecting to initiate upload](https://platformio.org/install/ide?install=vscode)
+
+### 2. Note on Code and Architecture
+TLDR: This entire system is HTTP driven. The ESP32 continously polls a backend endpoint for the settings and updates depending the returned data. HTTP with polling was chosen for easier fault-tolerance programming despite the higher overhead over something like MQTT/Websocket. 
+
+The ESP32 is built to connect over wifi to a backend server. It continously asks the backend server for config data in relation to what light settings it should pick next. 
+
+The backend server we're using is open source at [[here](https://github.com/Tshetrim/HappyFish/tree/main)] and an example of the response that is recieved from the fetch to the [endpoint](https://qc-incubator.up.railway.app/esp32/config) is:
+```
+{
+  "_id": "62c5a11afe5e5cc5d093664b",
+  "tod": 66365,
+  "sunrise": 0,
+  "sunset": 39660,
+  "duration": 0,
+  "rValue": 255,
+  "gValue": 255,
+  "bValue": 255,
+  "__v": 0
+}
+```
+The Incubator takes uses these values for adjusting its light settings. 
+
+You can host your own backend api with an endpoint that returns data in this JSON format to make it work with this specific Incubator code, or adjust accordingly. 
+
+A frontend dashboard like [this](https://qc-incubator.up.railway.app/esp32/dashboard) can then be used to modify the data that endpoint returns. 
 
 <!-- MARKDOWN LINKS & IMAGES -->
 <!-- https://www.markdownguide.org/basic-syntax/#reference-style-links -->
