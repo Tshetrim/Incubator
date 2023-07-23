@@ -113,7 +113,7 @@ Once files are installed to your desktop, open up an IDE for uploading scripts t
 I used [VSCode](https://code.visualstudio.com/) with [PlatformIO Extension ](https://platformio.org/install/ide?install=vscode)
 
 If new to development, I reccomend watching a tutorial on how to use and upload code to ESP32 with VSCode and PlatformIO like this [video](https://platformio.org/install/ide?install=vscode)
-  Key Reminders:[Hold ESP32's Boot button while connecting to initiate upload](https://platformio.org/install/ide?install=vscode)
+  - Key Reminder: [Hold ESP32's Boot button while connecting to initiate upload](https://platformio.org/install/ide?install=vscode)
 
 ### 2. Note on Code and Architecture
 TLDR: This entire system is HTTP driven. The ESP32 continously polls a backend endpoint for the settings and updates depending the returned data. HTTP with polling was chosen for easier fault-tolerance programming despite the higher overhead over something like MQTT/Websocket. 
